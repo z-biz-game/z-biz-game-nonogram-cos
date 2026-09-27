@@ -274,6 +274,8 @@
     ok('one stroke is enough to be worth saving', !!parsed.resume, 'resume null after a committed move');
     ok('resume keeps the origin seed', parsed.resume && parsed.resume.seed === g.puzzle.originSeed, parsed.resume && parsed.resume.seed);
     ok('resume ink decodes to the board length', parsed.resume && parsed.resume.cells === g.board.length, parsed.resume && parsed.resume.cells);
+    ok('resume carries what the run cost', !!parsed.resume && parsed.resume.moves === g.moves && parsed.resume.hints === g.hintsUsed,
+      `${parsed.resume && parsed.resume.moves} moves / ${parsed.resume && parsed.resume.hints} hints vs ${g.moves}/${g.hintsUsed}`);
     const decoded = parsed.resume ? Array.from(N.Store.resume().board).join('') : '';
     ok('resume ink is the board it saved', decoded === Array.from(g.board).join(''), decoded.length + ' cells');
 
@@ -324,6 +326,14 @@
     const same = Array.from(g.board).join('') === Array.from(r.board).join('');
     ok('resumed ink matches', same);
     ok('resumed clock continues, not restarts', g.elapsed() >= r.elapsedMs - 200, `${g.elapsed()} vs ${r.elapsedMs}`);
+    // A record is only honest if the cost of the run follows the board across the reload:
+    // 提示 decides the best time, and a resume that reset it could be farmed.
+    ok('resumed run keeps its move count', g.moves === r.moves, `${g.moves} vs ${r.moves}`);
+    ok('resumed run keeps its hint count', g.hintsUsed === r.hints, `${g.hintsUsed} vs ${r.hints}`);
+    const hintsBefore = g.hintsUsed;
+    N.useHint();
+    await sleep(20);
+    ok('the resumed run keeps paying for its help', g.hintsUsed === hintsBefore + 1, `${hintsBefore} → ${g.hintsUsed}`);
     N.solveAll();
     for (let i = 0; i < 80 && N.screen() !== 'win'; i++) await sleep(50);
     ok('finishing clears the resume record', !N.Store.resume());

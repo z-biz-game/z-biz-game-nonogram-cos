@@ -116,7 +116,7 @@ export const Store = {
     return this.data.daily.solved.includes(key);
   },
 
-  saveResume(puzzle, board, elapsedMs) {
+  saveResume(puzzle, board, elapsedMs, run) {
     this.data.resume = {
       // The generator derives an internal base seed from what it is handed, so a resume
       // has to store the *origin* seed or the rebuilt picture would not be the same one.
@@ -127,6 +127,11 @@ export const Store = {
       elapsedMs,
       cells: puzzle.w * puzzle.h,
       ink: rleEncode(board),
+      // The cost of the run travels with the board. Without it a player could take six
+      // hints, close the tab, come back, and finish with a clean 提示 0 record — the score
+      // that decides the best time is counted from strokes, and strokes are not saved.
+      moves: run.moves,
+      hints: run.hints,
       at: Date.now(),
     };
     this.save();

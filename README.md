@@ -29,15 +29,15 @@ npm run balance      # 难度实测台：每档 40 局的分数分位、pass 数
 npm run verify       # 无头 Chrome 跑 7 个浏览器场景（需本机 Chrome，见下）
 ```
 
-`npm run verify` 会自己起服务、自己开 Chrome、自己收尾，退出码即结论（共 100 项断言）：
+`npm run verify` 会自己起服务、自己开 Chrome、自己收尾，退出码即结论（共 108 项断言）：
 
 ```
 === engine ===   9 checks, 0 failed
 === gen ===     12 checks, 0 failed   {genMsMax: 1}
-=== play ===    24 checks, 0 failed
+=== play ===    25 checks, 0 failed
 === hint ===    27 checks, 0 failed   {boardsClearedByHints: 9, boards: 9}
-=== save ===    10 checks, 0 failed
-=== resume ===   7 checks, 0 failed
+=== save ===    14 checks, 0 failed
+=== resume ===  10 checks, 0 failed
 === layout ===  11 checks, 0 failed
 === ALL GREEN ===
 ```
@@ -125,6 +125,7 @@ BASE_URL=https://z-biz-game.github.io/z-biz-game-nonogram-cos/ npm run verify
 | 满盘乱涂不算赢 | `verify play`：全填必判冲突、不判胜 |
 | 刷新不丢进度 | `verify save` + `verify resume`（存档带 originSeed，重开复现同一张图与同一计时） |
 | 记录判优顺序 | `verify save`：更慢但少用提示算新纪录，反之不算 |
+| 纪录刷不了 | `verify resume`：存档带步数与提示数，续局后仍照常计费（关标签页再回来不会清零） |
 | 布局随容器收缩 | `verify layout`：`hitTest` 对全盘逐格往返、DPR 后备缓冲、边缘点击不落格 |
 
 ---

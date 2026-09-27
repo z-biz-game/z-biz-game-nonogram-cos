@@ -85,6 +85,13 @@ base        generate() 内部派生的 `${seed}|${tier}|${size}`，写进 puzzle
 手改 band 让它"看起来对"会让生成器退化成随机铺点，而 README 里"每档实测区间"那张表立刻变成假话。
 `engine-test` 和 `verify gen` 都会检查 in-band，改权重不重跑就是红。
 
+### 3.7 存档要带上这一局的"花费"
+`saveResume()` 除盘面外必须写 `moves` 与 `hints`，`begin({restore})` 必须把它们装回 `game`。
+最佳时间是由 `hints` 判定优先级的（`recordBest`），而这两个数只活在动作里、不在盘面里：
+不存就等于"吃六次提示 → 关标签页 → 回来清盘"能刷出一条**提示 0** 的纪录。
+`verify resume` 现在钉住了三件事：存档里的数等于当场、重载后的数等于存档、
+续局之后再用一次提示**仍然会+1**（续局不是免费模式）。
+
 ## 4. 踩过的坑
 
 - **`enumerate` 的缓存**是进程级 `Map`。位掩码一律 **LSB-first**（`while (m) { if (m & 1) … m >>>= 1 }`）；

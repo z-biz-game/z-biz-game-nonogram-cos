@@ -187,6 +187,10 @@ async function begin({ tier, seed, dailyKey, puzzle: given, restore }) {
   if (restore) {
     game.board.set(restore.board);
     game.startedAt = performance.now() - (restore.elapsedMs || 0);
+    // The picture came back; so must its cost. A resumed run that counted from zero would
+    // report fewer 提示 than it took, and 提示 is what decides a best time.
+    game.moves = restore.moves || 0;
+    game.hintsUsed = restore.hints || 0;
   }
   // Clue-0 lines are readable before the first stroke, so they arrive pre-crossed on a
   // fresh board; on a resumed one the crosses are already in the saved ink.
@@ -220,7 +224,7 @@ function flushResume() {
   // moves, not history.length: a stroke only reaches history when it closes, so a
   // length check here silently skips the very first move of every board.
   if (!game || game.finishedAt || !game.moves) return;
-  Store.saveResume(game.puzzle, game.board, game.elapsed());
+  Store.saveResume(game.puzzle, game.board, game.elapsed(), { moves: game.moves, hints: game.hintsUsed });
 }
 
 function persistResume() {
@@ -505,7 +509,7 @@ $('#btn-resume').addEventListener('click', async () => {
   await begin({
     tier: r.tier,
     puzzle: made.puzzle,
-    restore: { board: r.board, elapsedMs: r.elapsedMs },
+    restore: { board: r.board, elapsedMs: r.elapsedMs, moves: r.moves, hints: r.hints },
   });
 });
 $('#btn-resume-drop').addEventListener('click', () => {
