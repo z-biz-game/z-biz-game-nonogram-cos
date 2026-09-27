@@ -29,17 +29,23 @@ npm run balance      # 难度实测台：每档 40 局的分数分位、pass 数
 npm run verify       # 无头 Chrome 跑 7 个浏览器场景（需本机 Chrome，见下）
 ```
 
-`npm run verify` 会自己起服务、自己开 Chrome、自己收尾，退出码即结论：
+`npm run verify` 会自己起服务、自己开 Chrome、自己收尾，退出码即结论（共 100 项断言）：
 
 ```
 === engine ===   9 checks, 0 failed
 === gen ===     12 checks, 0 failed   {genMsMax: 1}
-=== play ===    21 checks, 0 failed
+=== play ===    24 checks, 0 failed
 === hint ===    27 checks, 0 failed   {boardsClearedByHints: 9, boards: 9}
 === save ===    10 checks, 0 failed
 === resume ===   7 checks, 0 failed
 === layout ===  11 checks, 0 failed
 === ALL GREEN ===
+```
+
+同一套断言可以直接打线上产物，部署过没部署过不是一句声明：
+
+```bash
+BASE_URL=https://z-biz-game.github.io/z-biz-game-nonogram-cos/ npm run verify
 ```
 
 ---

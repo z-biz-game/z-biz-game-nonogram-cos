@@ -6,6 +6,11 @@
 
 :root { color-scheme: dark; }
 
+/* The UA stylesheet's `[hidden]` loses to any author `display` declaration, so every
+   element hidden by flag — the screens, the resume card, the help sheet — needs this
+   one guard. Without it `hidden = true` still paints the box. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -30,9 +35,7 @@ body {
            calc(env(safe-area-inset-bottom) + var(--space-page));
   animation: rise var(--dur-base) var(--ease-ease) both;
 }
-.screen[hidden] { display: none; }
 .screen-center { justify-content: center; display: flex; }
-
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 h1 { font: 700 24px/1.25 var(--font-sans); margin: 0; letter-spacing: 0.06em; }
@@ -128,7 +131,10 @@ h3 { font: 700 18px/1.4 var(--font-sans); margin: 0 0 var(--space-inner); }
 .icon-btn[disabled] { opacity: 0.3; pointer-events: none; }
 
 /* ------------------------------- 对局 ------------------------------- */
-#screen-game { padding-bottom: calc(env(safe-area-inset-bottom) + 8px); display: flex; flex-direction: column; }
+#screen-game {
+  display: flex; flex-direction: column;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 8px);
+}
 .hud { display: flex; align-items: center; gap: var(--space-inner); min-height: 44px; }
 .hud-title { flex: 1; min-width: 0; }
 .hud-title strong { display: block; font: 700 16px/1.3 var(--font-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -194,7 +200,6 @@ canvas.grabbing { cursor: grabbing; }
 
 /* ------------------------------- 其他 ------------------------------- */
 .sheet { position: fixed; inset: 0; background: rgba(8, 8, 12, 0.72); display: flex; align-items: flex-end; justify-content: center; padding: var(--space-page); z-index: 20; animation: fade var(--dur-base) linear both; }
-.sheet[hidden] { display: none; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .sheet-card { width: 100%; max-width: 560px; max-height: 82dvh; overflow: auto; background: var(--surface); border: 1px solid var(--line-heavy); border-radius: var(--radius-card); padding: var(--space-card); }
 .rules { padding-left: 20px; margin: 0 0 var(--space-card); font-size: 13.5px; color: var(--ink-dim); }

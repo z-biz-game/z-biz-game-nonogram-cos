@@ -105,6 +105,12 @@ base        generate() 内部派生的 `${seed}|${tier}|${size}`，写进 puzzle
 - **`navigator.vibrate` 与 `AudioContext` 要问浏览器而不是问事件**：合成 `PointerEvent` 也会到达
   监听器，据它解锁就只会刷一串 "Blocked call to navigator.vibrate" 的 console error，
   把真正该看见的报错埋掉。判据用 `navigator.userActivation.hasBeenActive`。
+- **`.hidden = true` 不等于看不见**。UA 样式表里的 `[hidden] { display: none }` 特异性是 0，
+  任何作者层的 `display` 都能压过它。于是 `#screen-game { display: flex }` 让游戏屏永远在渲染
+  （首页底下压着一块活棋盘、结算卡接在盘面下面），`.resume-card { display: flex }` 让"继续"卡
+  在没有任何存档时也照样出现——而**所有读 `.hidden` 标志的断言全绿**。
+  现在 `css/game.css` 顶部有一条 `[hidden] { display: none !important; }` 统一兜住，
+  屏切换的断言只问布局（`getClientRects()`）不问标志。加新的可隐藏元素时不要再写局部补丁。
 - **测试自己也会说谎**：`tools/scenarios.js` 的 `done()` 必须 `splice` 出快照。
   返回 live 数组再清空，会让每个场景报 `0 checks` 却仍然带着失败计数——
   一份"看着像绿"的报告。`verify.sh` 现在对零断言直接判失败。

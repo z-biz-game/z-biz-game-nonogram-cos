@@ -19,6 +19,16 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const ng = () => window.nonogram;
 
+  // `.hidden === true` proves nothing on its own: a CSS rule with higher specificity
+  // (an ID selector, say) still paints the element. Ask the layout which screens
+  // actually occupy space.
+  const painted = () => ['menu', 'game', 'win']
+    .filter((n) => {
+      const el = document.querySelector(`[data-screen="${n}"]`);
+      return el && el.getClientRects().length > 0;
+    })
+    .join(',');
+
   async function waitBooted() {
     for (let i = 0; i < 200; i++) {
       if (window.nonogram && window.nonogram.Game) return true;
@@ -103,8 +113,11 @@
     if (!(await waitBooted())) return done();
     const N = ng();
 
+    const paintedAtBoot = painted();
     const g = await fresh('apprentice', 'play-1');
     ok('enters the game screen', N.screen() === 'game', N.screen());
+    ok('the menu is the only painted screen at boot', paintedAtBoot === 'menu', paintedAtBoot);
+    ok('entering a board paints exactly one screen', painted() === 'game', painted());
     ok('HUD names the picture', N.hud().name === g.puzzle.name, N.hud().name);
     ok('board starts blank', g.progress().filled === 0);
     ok('clue count matches the picture', (() => {
@@ -160,6 +173,11 @@
     }
     ok('over-filled row is reported', g.view.rowState[badRow].conflict, 'row ' + badRow);
     ok('conflict is explained in the status line', N.hud().status.includes('打架'), N.hud().status);
+    // The red digits on the gutters and the lines named in the status come from the same
+    // state; if one channel drops a line the player is told to look somewhere else.
+    const redLines = g.view.rowState.filter((s) => s.conflict).length + g.view.colState.filter((s) => s.conflict).length;
+    const namedLines = (N.hud().status.match(/第 \d+ [行列]/g) || []).length;
+    ok('every red line is named in the status', namedLines === redLines && redLines > 0, `${namedLines} named vs ${redLines} flagged`);
     let marked = 0;
     for (let i = 0; i < g.board.length; i++) if (g.conflictCells[i]) marked++;
     ok('conflict marks the offending block only', marked > 0 && marked <= want0(g, badRow) + 1, `${marked} cells`);
@@ -170,6 +188,7 @@
     N.solveAll();
     for (let i = 0; i < 80 && N.screen() !== 'win'; i++) await sleep(50);
     ok('finishing the picture wins', !!g.finishedAt && N.screen() === 'win', N.screen());
+    ok('the win screen replaces the board', painted() === 'win', painted());
     ok('win card shows the name', document.getElementById('win-name').textContent === g.puzzle.name);
     ok('win card reports measured passes', /\d/.test(document.getElementById('win-passes').textContent));
     // The stroke that completes the board must already be counted when the win is recorded,
@@ -236,7 +255,11 @@
   async function save() {
     if (!(await waitBooted())) return done();
     const N = ng();
-    N.Store.reset();
+    // Clear through the real button: it also re-renders the menu, which is the only way to
+    // see "nothing to continue" the way a player does.
+    document.getElementById('btn-reset').click();
+    const card = document.getElementById('resume-card');
+    ok('no save means no continue card', card.getClientRects().length === 0, 'the card is painted with nothing to resume');
     const g = await fresh('apprentice', 'save-1');
     const cells = [];
     for (let i = 0; i < g.puzzle.solution.length && cells.length < 4; i++) if (g.puzzle.solution[i]) cells.push(i);
@@ -253,6 +276,12 @@
     ok('resume ink decodes to the board length', parsed.resume && parsed.resume.cells === g.board.length, parsed.resume && parsed.resume.cells);
     const decoded = parsed.resume ? Array.from(N.Store.resume().board).join('') : '';
     ok('resume ink is the board it saved', decoded === Array.from(g.board).join(''), decoded.length + ' cells');
+
+    // Back to the menu the way a player does it, then check the offer is real and named.
+    document.getElementById('btn-home').click();
+    await sleep(80);
+    ok('a saved board offers the continue card', card.getClientRects().length > 0, 'card painted nothing after a save');
+    ok('the card names the saved picture', document.getElementById('resume-name').textContent.includes(g.puzzle.name), document.getElementById('resume-name').textContent);
 
     // Best-time rule: fewer hints wins, then fewer moves, then faster.
     N.Store.data.best = {};
@@ -283,7 +312,7 @@
     ok('a saved board survived the reload', !!r, r && r.name);
     if (!r) return done();
     const card = document.getElementById('resume-card');
-    ok('menu offers the continue card', card.hidden === false);
+    ok('menu offers the continue card', card.getClientRects().length > 0, 'not painted');
     document.getElementById('btn-resume').click();
     // The screen flips before the board exists: begin() prints "正在出题…" and builds the
     // game on a later frame, so polling the screen alone reads a half-open state.
