@@ -1,0 +1,22 @@
+{
+  "name": "nonogram",
+  "version": "1.0.0",
+  "description": "数织 Nonogram — 浏览器原生像素逻辑绘图. 生成器用行列表述法保证每局唯一解且可纯逻辑推出, 难度分由求解器实测.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5173",
+    "electron": "electron .",
+    "test": "node tools/engine-test.mjs",
+    "balance": "node tools/balance.mjs",
+    "verify": "bash tools/verify.sh",
+    "check": "for f in js/*.js js/*/*.js; do node --check \"$f\" || exit 1; done && node --check server.cjs && node --check electron/main.cjs && echo OK"
+  },
+  "keywords": ["game", "puzzle", "nonogram", "picross", "logic", "procedural", "web", "electron"],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

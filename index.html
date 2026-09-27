@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0F0F0F">
+<meta name="description" content="数织 NONOGRAM —— 每一张图都保证可以用纯逻辑推出，永不靠猜。程序生成 + 求解器实测难度分级。">
+<title>数织 · Nonogram</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 5 5'%3E%3Crect width='5' height='5' fill='%230F0F0F'/%3E%3Cg fill='%23FFC048'%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3Crect x='1' y='3' width='3' height='1'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="./css/game.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============================ 首页 ============================ -->
+  <section class="screen" id="screen-menu" data-screen="menu">
+    <header class="brand">
+      <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <div>
+        <h1>数织</h1>
+        <p class="brand-sub">NONOGRAM · 像素逻辑绘图</p>
+      </div>
+    </header>
+
+    <p class="lede">
+      行列边的数字是<b>连续涂格的长度</b>。把每一格推出来，图就自己浮出水面 ——
+      这里的每一张图都经过求解器实测，<b>只用铅笔逻辑就能推到底</b>，不存在五五开的猜。
+    </p>
+
+    <div class="tier-grid" id="tier-grid"></div>
+
+    <div class="card daily-card" id="daily-card">
+      <div class="daily-info">
+        <span class="chip chip-accent">每日一题</span>
+        <strong id="daily-key">—</strong>
+        <p id="daily-note">全服同一张图，按日期种子生成。</p>
+      </div>
+      <button class="btn btn-primary" id="btn-daily">开始</button>
+    </div>
+
+    <div class="card resume-card" id="resume-card" hidden>
+      <div class="resume-info">
+        <span class="chip" id="resume-tier">—</span>
+        <p id="resume-name">—</p>
+      </div>
+      <button class="btn" id="btn-resume">继续</button>
+      <button class="btn btn-ghost" id="btn-resume-drop" title="放弃这局">×</button>
+    </div>
+
+    <div class="card stats-card">
+      <div class="stat"><b id="st-solved">0</b><span>完成</span></div>
+      <div class="stat"><b id="st-streak">0</b><span>连续日</span></div>
+      <div class="stat"><b id="st-time">0:00</b><span>累计用时</span></div>
+      <div class="stat"><b id="st-hints">0</b><span>求助</span></div>
+    </div>
+
+    <div class="settings">
+      <label class="switch"><input type="checkbox" id="opt-sound"><span>音效</span></label>
+      <label class="switch"><input type="checkbox" id="opt-autocross"><span>线索闭合自动打叉</span></label>
+      <label class="switch"><input type="checkbox" id="opt-errors"><span>标出矛盾格</span></label>
+      <label class="switch"><input type="checkbox" id="opt-motion"><span>减弱动效</span></label>
+      <button class="btn btn-ghost btn-sm" id="btn-help">怎么玩</button>
+      <button class="btn btn-ghost btn-sm" id="btn-reset">清空记录</button>
+    </div>
+  </section>
+
+  <!-- ============================ 对局 ============================ -->
+  <section class="screen" id="screen-game" data-screen="game" hidden>
+    <header class="hud">
+      <button class="icon-btn" id="btn-back" aria-label="返回">‹</button>
+      <div class="hud-title">
+        <strong id="hud-name">—</strong>
+        <span id="hud-tier" class="muted">—</span>
+      </div>
+      <div class="hud-metrics">
+        <span class="metric" id="hud-progress"><b>0%</b></span>
+        <span class="metric metric-time" id="hud-time">0:00</span>
+      </div>
+    </header>
+
+    <div class="progress-rail"><i id="progress-fill"></i></div>
+
+    <div class="board-wrap" id="board-wrap">
+      <canvas id="board" aria-label="数织棋盘"></canvas>
+    </div>
+
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="画笔模式">
+        <button class="seg-btn is-on" data-mode="paint">涂格</button>
+        <button class="seg-btn" data-mode="mark">打叉</button>
+        <button class="seg-btn" data-mode="cycle">循环</button>
+      </div>
+      <div class="tool-actions">
+        <button class="icon-btn" id="btn-undo" aria-label="撤销">↺</button>
+        <button class="icon-btn" id="btn-redo" aria-label="重做">↻</button>
+        <button class="btn btn-ghost btn-sm" id="btn-hint">求助 <b id="hint-count">0</b></button>
+        <button class="btn btn-ghost btn-sm" id="btn-clear">清空</button>
+      </div>
+    </div>
+
+    <div class="statusline" id="statusline" role="status" aria-live="polite"></div>
+  </section>
+
+  <!-- ============================ 结算 ============================ -->
+  <section class="screen screen-center" id="screen-win" data-screen="win" hidden>
+    <div class="win-card">
+      <span class="chip chip-accent" id="win-tag">完成</span>
+      <h2 id="win-name">—</h2>
+      <p class="muted" id="win-style">—</p>
+      <div class="win-grid">
+        <div><b id="win-time">—</b><span>用时</span></div>
+        <div><b id="win-moves">—</b><span>笔画</span></div>
+        <div><b id="win-hints">—</b><span>求助</span></div>
+        <div><b id="win-score">—</b><span>难度分</span></div>
+      </div>
+      <p class="win-note" id="win-note">—</p>
+      <p class="win-proof">
+        本局由 <b id="win-passes">—</b> 轮行列交替推出，首扫确定 <b id="win-first">—</b> 的格子。
+        线索只对应一张图 —— 这不是手感，是生成时用求解器量过的。
+      </p>
+      <div class="win-actions">
+        <button class="btn btn-primary" id="btn-next">下一张</button>
+        <button class="btn" id="btn-again">重玩本图</button>
+        <button class="btn btn-ghost" id="btn-home">收工</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 规则 ============================ -->
+  <div class="sheet" id="help-sheet" hidden>
+    <div class="sheet-card">
+      <h3>怎么玩</h3>
+      <ol class="rules">
+        <li><b>数字是长度</b>：<code>3 1</code> 表示这一行里有连续 3 格、再隔开至少 1 格、再连续 1 格。</li>
+        <li><b><code>0</code> 是空的</b>：整行/整列一个格都不涂。</li>
+        <li><b>涂格 / 打叉</b>：打叉是"这里一定不涂"。推出来的排除和涂格一样重要。</li>
+        <li><b>线索闭合</b>：一行的连续段刚好等于线索，剩下的空格会自动打叉（可在首页关掉）。</li>
+        <li><b>矛盾提示</b>：涂到线索装不下时，多出来的那一块会变红并抖一下。红色只说"这里和数字打架"，不告诉你正确答案 —— 那样就没有推理了。</li>
+        <li><b>求助</b>：跑一遍和出题时同一个求解器，给你一步<b>可证明</b>的推进，并说明用的是哪条规则。会记进成绩。</li>
+        <li><b>右键 / 长按</b> 直接打叉，双指拖动擦除。方向键移光标，空格落子，<code>Z</code> 撤销。</li>
+      </ol>
+      <button class="btn btn-primary" id="btn-help-close">知道了</button>
+    </div>
+  </div>
+
+  <div id="toast-host"></div>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
