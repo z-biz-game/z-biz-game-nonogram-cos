@@ -14,7 +14,7 @@ import {
   enumerate, analyseLine, deduce, sweep, readLine, isSolved, clueFromSolution,
 } from './engine/line.js';
 import { Game } from './ui/game.js';
-import { BoardView } from './render/board.js';
+import { BoardView, loadTextures, textureState } from './render/board.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -57,7 +57,13 @@ const ui = {
   resumeCard: $('#resume-card'),
   resumeName: $('#resume-name'),
   resumeTier: $('#resume-tier'),
+  pauseVeil: $('#pause-veil'),
+  btnPause: $('#btn-pause'),
+  btnMute: $('#btn-mute'),
+  btnFull: $('#btn-fullscreen'),
 };
+
+let userPaused = false;
 
 let game = null;
 let view = null;
@@ -204,6 +210,8 @@ async function begin({ tier, seed, dailyKey, puzzle: given, restore }) {
   ui.redo.disabled = true;
   status('用行列线索推出整张图。<b>本局可纯逻辑解出</b>，不需要猜。');
   lastSecond = -1;
+  userPaused = false;
+  syncPauseUi();
   syncHud();
   needsDraw = true;
   return game;
@@ -245,17 +253,119 @@ function syncHud() {
   ui.redo.disabled = !game.redone.length;
 }
 
+// ---------------------------------------------------------------- 暂停 / 静音 / 全屏
+// 三个开关都改真状态：暂停同时冻住计时与动画时钟，静音让 AudioContext 挂起且不再
+// 生成 oscillator，全屏走原生 requestFullscreen 并在尺寸变化后重排棋盘。
+const SPRITE = { sound: 0, muted: 1, pause: 2, play: 3, expand: 4, collapse: 5 };
+const setFrame = (btn, key) => {
+  btn.style.setProperty('--i', String(SPRITE[key]));
+  btn.classList.toggle('is-on', key === 'play' || key === 'collapse');
+  btn.classList.toggle('is-muted', key === 'muted');
+};
+
+function syncPauseUi() {
+  const on = !!(game && game.pausedAt);
+  ui.pauseVeil.hidden = !on;
+  setFrame(ui.btnPause, on ? 'play' : 'pause');
+  ui.btnPause.setAttribute('aria-label', on ? '继续' : '暂停');
+  ui.btnPause.title = on ? '继续 (P)' : '暂停 (P)';
+}
+
+function setPaused(v) {
+  if (!game || game.finishedAt) return;
+  userPaused = !!v;
+  if (userPaused) {
+    game.pause();
+    // 暂停是一次写盘的时机：玩家可能就在这一屏停留很久，也可能直接关掉标签页。
+    flushResume();
+    status('已暂停 —— 计时与动画都停在这一刻。', 'good');
+  } else {
+    game.resume();
+    lastSecond = -1;
+  }
+  syncPauseUi();
+  needsDraw = true;
+}
+
+function togglePause() {
+  if (game && !game.finishedAt) setPaused(!game.pausedAt);
+}
+
+function syncMuteUi() {
+  const muted = audio.isMuted();
+  setFrame(ui.btnMute, muted ? 'muted' : 'sound');
+  ui.btnMute.setAttribute('aria-label', muted ? '取消静音' : '静音');
+  ui.btnMute.title = muted ? '取消静音 (M)' : '静音 (M)';
+  const box = $('#opt-sound');
+  if (box) box.checked = !muted;
+}
+
+function toggleMute() {
+  const toOn = audio.isMuted();
+  Store.setSetting('sound', toOn);
+  audio.setEnabled(toOn);
+  // 只在"开声"那一侧给反馈：静音状态下再发一个音就等于没静音。
+  if (toOn) audio.hint();
+  syncMuteUi();
+  toast(toOn ? '声音已开' : '已静音 · 音频上下文挂起');
+}
+
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+
+function syncFullUi() {
+  const on = !!fsElement();
+  setFrame(ui.btnFull, on ? 'collapse' : 'expand');
+  ui.btnFull.setAttribute('aria-label', on ? '退出全屏' : '全屏');
+  ui.btnFull.title = on ? '退出全屏 (F)' : '全屏 (F)';
+}
+
+function toggleFullscreen() {
+  const run = (p) => { if (p && p.catch) p.catch(() => toast('浏览器拒绝了全屏请求', 'bad')); };
+  try {
+    if (fsElement()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) run(exit.call(document));
+      return;
+    }
+    const host = $('#app') || document.documentElement;
+    const req = host.requestFullscreen || host.webkitRequestFullscreen;
+    if (!req) {
+      toast('这台设备不支持全屏', 'bad');
+      return;
+    }
+    run(req.call(host));
+  } catch {
+    toast('这台设备不支持全屏', 'bad');
+  }
+}
+
+// 全屏、尺寸、横竖屏切换都只走一次重排：动画时钟不受影响。
+for (const evt of ['fullscreenchange', 'webkitfullscreenchange']) {
+  document.addEventListener(evt, () => {
+    syncFullUi();
+    resize();
+  });
+}
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+
+// 动画时钟只有一条：dt 累加器。帧时间戳本身不再进渲染路径，所以 30/60/120Hz
+// 下同一段仿真看到的动画进度一样，暂停时也不会偷偷往前走。
+let lastNow = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  if (ui.game.hidden || !game || !view) return;
+  if (ui.game.hidden || !game || !view) { lastNow = now; return; }
+  // 首帧与标签页回来后的巨大跳档都要夹住：一帧 4 秒会把所有脉冲一次性推到结束。
+  const dt = lastNow ? Math.min(100, Math.max(0, now - lastNow)) : 16.666;
+  lastNow = now;
+  view.tick(dt, !game.pausedAt);
   const secs = Math.floor(game.elapsed(now) / 1000);
   if (secs !== lastSecond) {
     lastSecond = secs;
     ui.hudTime.textContent = fmtTime(game.elapsed(now));
   }
-  const animating = view.animating(now);
-  if (needsDraw || animating) {
-    view.render(game, now);
+  // 求助框自己会闪（相位来自 clock），所以它得算"还在动"，否则只闪一帧就定了。
+  if (needsDraw || view.animating() || game.view.hints.size) {
+    view.render(game);
     needsDraw = false;
   }
 }
@@ -271,7 +381,7 @@ function resize() {
 function wireGameEvents() {
   game.on((e, g) => {
     if (e.type === 'fill' || e.type === 'cross' || e.type === 'erase') {
-      view.pulse(e.cell, e.type === 'fill' ? 'fill' : 'cross', performance.now());
+      view.pulse(e.cell, e.type === 'fill' ? 'fill' : 'cross');
       if (e.type === 'fill') audio.fill();
       else if (e.type === 'cross') audio.cross();
       else audio.erase();
@@ -283,7 +393,7 @@ function wireGameEvents() {
       // exists once the stroke has closed and taken its auto-crosses with it.
       persistResume();
     } else if (e.type === 'lineDone') {
-      view.lineComplete(e.horizontal, e.index, performance.now());
+      view.lineComplete(e.horizontal, e.index);
       audio.lineDone();
       haptic('big');
       needsDraw = true;
@@ -327,7 +437,7 @@ function onWin() {
     dailyLine = ` · 今日连续 <b>${r.streak}</b> 天`;
   }
   Store.clearResume();
-  view.beginWin(performance.now());
+  view.beginWin();
   audio.win();
   haptic('big');
   needsDraw = true;
@@ -363,7 +473,7 @@ function paintValue(ev) {
 ui.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 ui.canvas.addEventListener('pointerdown', (ev) => {
-  if (!game || game.finishedAt) return;
+  if (!game || game.finishedAt || game.pausedAt) return;
   ev.currentTarget.setPointerCapture(ev.pointerId);
   const rect = ui.canvas.getBoundingClientRect();
   const hit = view.hitTest(ev.clientX - rect.left, ev.clientY - rect.top);
@@ -428,9 +538,27 @@ window.addEventListener('pointerup', endDrag);
 // Keyboard play: arrows only move the marker, space commits. Painting on every arrow
 // press would turn navigation into input and make undo meaningless.
 window.addEventListener('keydown', (ev) => {
-  if (ui.game.hidden || !game) return;
-  const p = game.puzzle;
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const k = ev.key.toLowerCase();
+  // 这三个键在任何屏幕都成立：静音与全屏是设备级状态，规则 sheet 是入口。
+  if (k === 'm') { ev.preventDefault(); toggleMute(); return; }
+  if (k === 'f') { ev.preventDefault(); toggleFullscreen(); return; }
+  if (k === '?' || k === '/') {
+    ev.preventDefault();
+    const sheet = $('#help-sheet');
+    sheet.hidden = !sheet.hidden;
+    return;
+  }
+  if (ui.game.hidden || !game) return;
+  if (k === 'escape') { show('menu'); renderMenu(); return; }
+  if (k === 'p') { ev.preventDefault(); togglePause(); return; }
+  if (k === 'r') { ev.preventDefault(); $('#btn-clear').click(); return; }
+  // 暂停时棋盘不吃输入，但仍允许上面的暂停/静音/全屏键。
+  if (game.pausedAt && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ', 'enter', 'z', 'y', 'h'].includes(k)) {
+    ev.preventDefault();
+    return;
+  }
+  const p = game.puzzle;
   const move = (dx, dy) => {
     ev.preventDefault();
     cursor.x = Math.max(0, Math.min(p.w - 1, cursor.x + dx));
@@ -449,7 +577,6 @@ window.addEventListener('keydown', (ev) => {
   } else if (k === 'z') game.undo();
   else if (k === 'y') game.redo();
   else if (k === 'h') useHint();
-  else if (k === 'escape') { show('menu'); renderMenu(); }
 });
 
 function useHint() {
@@ -476,10 +603,14 @@ $('#btn-hint').addEventListener('click', useHint);
 $('#btn-clear').addEventListener('click', () => {
   if (!game) return;
   game.reset();
+  if (view) view.resetAnim();
   syncHud();
   needsDraw = true;
   status('棋盘已清空，计时重新开始。');
 });
+ui.btnPause.addEventListener('click', togglePause);
+ui.btnMute.addEventListener('click', toggleMute);
+ui.btnFull.addEventListener('click', toggleFullscreen);
 for (const b of document.querySelectorAll('.seg-btn')) {
   b.addEventListener('click', () => {
     mode = b.dataset.mode;
@@ -522,6 +653,7 @@ $('#opt-sound').addEventListener('change', (e) => {
   Store.setSetting('sound', e.target.checked);
   audio.setEnabled(e.target.checked);
   if (e.target.checked) audio.hint();
+  syncMuteUi();
 });
 $('#opt-autocross').addEventListener('change', (e) => Store.setSetting('autoCross', e.target.checked));
 $('#opt-errors').addEventListener('change', (e) => Store.setSetting('showErrors', e.target.checked));
@@ -544,10 +676,13 @@ document.addEventListener('visibilitychange', () => {
     // Synchronous: a backgrounded tab can be discarded at any moment, and a debounced
     // write is a board the player painted but never gets back.
     flushResume();
+  } else if (userPaused) {
+    game.pause();
   } else {
     game.resume();
     lastSecond = -1;
   }
+  syncPauseUi();
 });
 
 window.addEventListener('pagehide', flushResume);
@@ -599,6 +734,8 @@ window.nonogram = {
       hints: game.hintsUsed,
       closedLines: game.closedLines,
       finished: !!game.finishedAt,
+      paused: !!game.pausedAt,
+      animClock: view ? Math.round(view.clock) : -1,
       elapsed: Math.round(game.elapsed()),
     };
   },
@@ -633,6 +770,14 @@ window.nonogram = {
   undo: () => game && game.undo(),
   redo: () => game && game.redo(),
   reset: () => game && game.reset(),
+  // 对拍 harness 驱动的就是玩家看到的那一个 loop：给它合成时间戳，它产出真实帧路径。
+  frame: (now) => loop(now),
+  clock: () => (view ? view.clock : -1),
+  isPaused: () => !!(game && game.pausedAt),
+  textureState,
+  togglePause,
+  toggleMute,
+  toggleFullscreen,
   setMode(m) { mode = m; },
   show,
   screen() {
@@ -649,12 +794,30 @@ window.nonogram = {
       undoDisabled: ui.undo.disabled,
       redoDisabled: ui.redo.disabled,
       boardPx: [ui.canvas.width, ui.canvas.height],
+      veilHidden: ui.pauseVeil.hidden,
+      sprite: [ui.btnPause.style.getPropertyValue('--i'), ui.btnMute.style.getPropertyValue('--i'), ui.btnFull.style.getPropertyValue('--i')],
+      audioStats: audio.stats(),
     };
   },
 };
 
 // ---------------------------------------------------------------- boot
 setReduceMotion(Store.setting('reduceMotion'));
+// 纹理是渐进增强：两张 PNG 到位就重画一次，没到位（离线首帧、file:// 读不到）画面照常。
+loadTextures(() => { needsDraw = true; });
 renderMenu();
+syncMuteUi();
+syncFullUi();
 show('menu');
+
+// manifest 里的快捷方式指向 ./?mode=daily：从桌面/主屏图标直达每日一题。
+try {
+  if (new URLSearchParams(location.search).get('mode') === 'daily') {
+    Promise.resolve(startDaily())
+      .then((g) => { if (!g) toast('每日一题暂时没能生成', 'bad'); })
+      .catch(() => toast('每日一题暂时没能生成', 'bad'));
+    history.replaceState(null, '', location.pathname);
+  }
+} catch { /* 地址栏读不出来的环境就不 deep-link */ }
+
 requestAnimationFrame(loop);

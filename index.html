@@ -93,12 +93,21 @@
         <span class="metric" id="hud-progress"><b>0%</b></span>
         <span class="metric metric-time" id="hud-time">0:00</span>
       </div>
+      <div class="hud-actions">
+        <button class="icon-btn hud-ico" id="btn-pause" type="button" style="--i:2" aria-label="暂停" title="暂停 (P)"></button>
+        <button class="icon-btn hud-ico" id="btn-mute" type="button" style="--i:0" aria-label="静音" title="静音 (M)"></button>
+        <button class="icon-btn hud-ico" id="btn-fullscreen" type="button" style="--i:4" aria-label="全屏" title="全屏 (F)"></button>
+      </div>
     </header>
 
     <div class="progress-rail"><i id="progress-fill"></i></div>
 
     <div class="board-wrap" id="board-wrap">
       <canvas id="board" aria-label="数织棋盘"></canvas>
+      <div class="pause-veil" id="pause-veil" hidden>
+        <strong>已暂停</strong>
+        <span>计时与动画都停在这一刻 · 按 <code>P</code> 继续</span>
+      </div>
     </div>
 
     <div class="toolbar">

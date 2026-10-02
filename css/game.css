@@ -150,6 +150,7 @@ h3 { font: 700 18px/1.4 var(--font-sans); margin: 0 0 var(--space-inner); }
 .progress-rail.is-done i { background: var(--success); }
 
 .board-wrap {
+  position: relative;
   display: flex; justify-content: center; align-items: flex-start;
   flex: 1; min-height: 0; overflow: auto;
   touch-action: none; border-radius: var(--radius-card);
@@ -164,6 +165,28 @@ h3 { font: 700 18px/1.4 var(--font-sans); margin: 0 0 var(--space-inner); }
 }
 canvas { display: block; border-radius: var(--radius-card); touch-action: none; }
 canvas.grabbing { cursor: grabbing; }
+
+/* HUD 图标不是字符画，是 assets/gen/make_art.py 生成的 576×96 位图条：
+   sound/muted/pause/play/expand/collapse 六帧，帧号由 --i 给（JS 按状态改写）。 */
+.hud-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.hud-ico {
+  background-image: url('../assets/textures/hud-icons.png');
+  background-repeat: no-repeat;
+  background-size: 600% 100%;
+  background-position: calc(var(--i) * 20%) center;
+  /* 图标本体只占内容框，44px 的命中区照旧，视觉上不顶到边框 */
+  padding: 10px; background-origin: content-box; background-clip: content-box;
+}
+.hud-ico.is-on { background-color: var(--accent-soft); border-color: var(--accent); }
+.hud-ico.is-muted { border-color: var(--error); }
+.pause-veil {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: rgba(15, 15, 15, 0.78); border-radius: var(--radius-card);
+  color: var(--ink); text-align: center; padding: 16px;
+}
+.pause-veil strong { font: 700 22px/1 var(--font-sans); letter-spacing: 0.24em; }
+.pause-veil span { font-size: 12px; color: var(--ink-dim); }
 
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-inner); flex-wrap: wrap; margin-top: var(--space-inner); }
 .seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-button); padding: 3px; gap: 3px; }

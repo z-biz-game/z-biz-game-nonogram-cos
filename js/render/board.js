@@ -5,6 +5,42 @@
 import { Palette as P, Space, Radius, Motion, Font, Cell, prefersReducedMotion } from '../theme.js';
 import { EMPTY, FILLED, CROSS } from '../engine/line.js';
 
+// 位图资产：与图标同一套母题、同一次生成（assets/gen/make_art.py）。
+// 装载失败就留 null，渲染退回程序化画法 —— 纹理是质感，不是依赖。
+const TEX = { grain: null, spark: null };
+let texRequested = false;
+
+function assetUrl(rel) {
+  try {
+    return new URL(rel, document.baseURI || 'http://localhost/').href;
+  } catch {
+    return rel;
+  }
+}
+
+export function loadTextures(onReady) {
+  if (onReady) loadTextures.cb = onReady;
+  if (texRequested) return;
+  texRequested = true;
+  let settled = 0;
+  const done = () => {
+    if (++settled === 2 && loadTextures.cb) loadTextures.cb();
+  };
+  for (const key of ['grain', 'spark']) {
+    const img = new Image();
+    img.onload = () => { TEX[key] = img; done(); };
+    img.onerror = done;
+    img.src = assetUrl(`assets/textures/${key === 'grain' ? 'paper-grain' : 'spark'}.png`);
+    // 命中磁盘缓存时 onload 也可能已经错过，complete 是唯一可靠读数。
+    if (img.complete && img.naturalWidth) { TEX[key] = img; done(); }
+  }
+}
+loadTextures.cb = null;
+
+export function textureState() {
+  return { grain: !!TEX.grain, spark: !!TEX.spark };
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -24,8 +60,25 @@ export class BoardView {
     this.pulses = new Map();
     this.flashes = new Map();
     this.winAt = 0;
+    // 动画时间基准：只由 tick(dt) 累加，不再直接吃帧时间戳。暂停时不累加，
+    // 于是脉冲/闭合闪光/结算前缘一起冻住，恢复后从冻结处继续。
+    this.clock = 0;
+    this._grain = null;
+    this._grainImg = null;
     this.w = 0;
     this.h = 0;
+  }
+
+  tick(dtMs, active) {
+    if (active) this.clock += dtMs;
+    return this.clock;
+  }
+
+  resetAnim() {
+    this.clock = 0;
+    this.pulses.clear();
+    this.flashes.clear();
+    this.winAt = 0;
   }
 
   static maxClueLen(clues) {
@@ -97,26 +150,30 @@ export class BoardView {
     return null;
   }
 
-  pulse(cell, kind, now) {
-    if (!prefersReducedMotion()) this.pulses.set(cell, { kind, at: now });
+  // 三个动画入口都只盖 this.clock 的章，不接受外部时间戳：这样"帧率无关"
+  // 不是约定而是结构性的——唯一的时钟是 tick(dt) 累加出来的那一个。
+  pulse(cell, kind) {
+    if (!prefersReducedMotion()) this.pulses.set(cell, { kind, at: this.clock });
   }
 
-  lineComplete(horizontal, index, now) {
-    if (!prefersReducedMotion()) this.flashes.set((horizontal ? 'r' : 'c') + index, { at: now });
+  lineComplete(horizontal, index) {
+    if (!prefersReducedMotion()) this.flashes.set((horizontal ? 'r' : 'c') + index, { at: this.clock });
   }
 
-  beginWin(now) {
-    this.winAt = now;
+  beginWin() {
+    this.winAt = this.clock;
   }
 
-  animating(now) {
+  animating() {
+    const now = this.clock;
     if (this.winAt) return true;
     for (const v of this.pulses.values()) if (now - v.at < Motion.pop) return true;
     for (const v of this.flashes.values()) if (now - v.at < Motion.line) return true;
     return false;
   }
 
-  render(game, now) {
+  render(game) {
+    const now = this.clock;
     const { puzzle, board, view } = game;
     const g = this.geo;
     if (!g) return;
@@ -172,6 +229,21 @@ export class BoardView {
     ctx.clip();
     ctx.fillStyle = P.surface;
     ctx.fillRect(g.originX, g.originY, g.boardW, g.boardH);
+    // 纸纹是静态质感，不参与动画，所以不受 prefersReducedMotion 影响；
+    // 图没到就是纯色，画面少一层纹理但一切都还在。
+    if (TEX.grain && typeof ctx.createPattern === 'function') {
+      if (this._grainImg !== TEX.grain) {
+        this._grain = ctx.createPattern(TEX.grain, 'repeat');
+        this._grainImg = TEX.grain;
+      }
+      if (this._grain) {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = this._grain;
+        ctx.fillRect(g.originX, g.originY, g.boardW, g.boardH);
+        ctx.restore();
+      }
+    }
 
     for (let i = 0; i < board.length; i++) {
       const v = board[i];
@@ -295,11 +367,18 @@ export class BoardView {
         ctx.rect(g.originX, g.originY, g.boardW, g.boardH);
         ctx.clip();
         ctx.globalCompositeOperation = 'lighter';
+        const spark = TEX.spark && typeof ctx.drawImage === 'function' ? TEX.spark : null;
         for (let y = 0; y < puzzle.h; y++)
           for (let x = 0; x < puzzle.w; x++) {
             if (!puzzle.solution[y * puzzle.w + x]) continue;
             const k = 1 - Math.min(1, Math.abs(x * c + y * c - head) / (c * 2.4));
             if (k <= 0) continue;
+            if (spark) {
+              ctx.globalAlpha = 0.5 * k;
+              const s = c * (1.05 + k);
+              ctx.drawImage(spark, g.originX + x * c + c / 2 - s / 2, g.originY + y * c + c / 2 - s / 2, s, s);
+              continue;
+            }
             ctx.fillStyle = `rgba(255,217,138,${0.5 * k})`;
             ctx.fillRect(g.originX + x * c, g.originY + y * c, c, c);
           }
