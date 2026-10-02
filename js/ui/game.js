@@ -75,7 +75,10 @@ export class Game {
 
   elapsed(now = performance.now()) {
     if (!this.startedAt) return 0;
-    return Math.max(0, (this.finishedAt || now) - this.startedAt - this.pausedTotal);
+    // 暂停中按 pausedAt 截断：pausedTotal 要等 resume() 才补，中间这段时间若不截断，
+    // "暂停"就只是不显示，玩家暂停去吃饭回来时间照样算进成绩。
+    const stop = this.finishedAt || this.pausedAt || now;
+    return Math.max(0, stop - this.startedAt - this.pausedTotal);
   }
 
   remaining() {

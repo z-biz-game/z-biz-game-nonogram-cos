@@ -5,8 +5,12 @@
 let ctx = null;
 let master = null;
 let enabled = true;
+// 只统计"真的建出来的节点"：静音态下这个数字必须一动不动，否则就是假静音。
+let oscillators = 0;
 
 function ensure() {
+  // 静音态连 AudioContext 都不新建：没有节点可建，也就没有"偷偷还在响"的余地。
+  if (!enabled) return null;
   if (ctx) return ctx;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
@@ -17,12 +21,36 @@ function ensure() {
   return ctx;
 }
 
+// suspend/resume 才是"停"与"不停"的分界：只把 gain 归零，振荡器还在按秒烧 CPU。
+function applyMuteState() {
+  if (!ctx) return;
+  try {
+    if (!enabled && ctx.state === 'running') {
+      const p = ctx.suspend();
+      if (p && p.catch) p.catch(() => {});
+    } else if (enabled && ctx.state === 'suspended') {
+      const p = ctx.resume();
+      if (p && p.catch) p.catch(() => {});
+    }
+  } catch {
+    /* 老 Safari 上 suspend/resume 可能不存在，静音判定仍以 enabled 为准 */
+  }
+}
+
 export const audio = {
   setEnabled(v) {
     enabled = !!v;
-    if (master) master.gain.value = enabled ? 0.32 : 0;
+    applyMuteState();
   },
   isEnabled: () => enabled,
+  isMuted: () => !enabled,
+  mute() { this.setEnabled(false); },
+  unmute() { this.setEnabled(true); },
+  toggleMute() { this.setEnabled(!enabled); return enabled; },
+  // 台架读数：静音前后 created 的增量必须为 0，state 必须是 suspended。
+  stats() {
+    return { enabled, created: oscillators, ctxState: ctx ? ctx.state : 'none' };
+  },
   // Browsers refuse to start audio outside a gesture; the first tap calls this.
   unlock() {
     const c = ensure();
@@ -34,6 +62,7 @@ export const audio = {
     if (!c || !enabled) return;
     const t0 = c.currentTime + delay;
     const osc = c.createOscillator();
+    oscillators++;
     const g = c.createGain();
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t0);

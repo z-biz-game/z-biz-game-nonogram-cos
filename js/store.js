@@ -39,22 +39,111 @@ function rleDecode(pairs, len) {
   return b;
 }
 
+// ---- 两段式解码：第一段拿原始记录，第二段逐段净化成可信结构 ------------------
+// 判据不是"能不能 parse 过"，而是"一条坏记录丢多少"：丢一条才算过，整局冻死算没做。
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : d);
+const bool = (v, d) => (typeof v === 'boolean' ? v : d);
+const str = (v, d) => (typeof v === 'string' && v ? v : d);
+
+const sanitizeSettings = (raw) => {
+  const d = defaults().settings;
+  const s = isObj(raw) ? raw : {};
+  return {
+    sound: bool(s.sound, d.sound),
+    autoCross: bool(s.autoCross, d.autoCross),
+    showErrors: bool(s.showErrors, d.showErrors),
+    reduceMotion: bool(s.reduceMotion, d.reduceMotion),
+  };
+};
+
+// best 是"一层一个 tier 的表"：某个 tier 的记录烂掉，只丢那一个 tier。
+const sanitizeBest = (raw) => {
+  const out = {};
+  if (!isObj(raw)) return out;
+  for (const [tier, rec] of Object.entries(raw)) {
+    if (!isObj(rec)) continue;
+    const ms = num(rec.ms, NaN);
+    if (!Number.isFinite(ms) || ms > 1e10) continue;
+    out[tier] = {
+      ms,
+      hints: num(rec.hints, 0),
+      moves: num(rec.moves, 0),
+      size: num(rec.size, 0),
+      at: num(rec.at, 0),
+    };
+  }
+  return out;
+};
+
+const sanitizeDaily = (raw) => {
+  const d = defaults().daily;
+  const v = isObj(raw) ? raw : {};
+  return {
+    lastKey: typeof v.lastKey === 'string' ? v.lastKey : null,
+    streak: num(v.streak, d.streak),
+    solved: Array.isArray(v.solved) ? v.solved.filter((k) => typeof k === 'string').slice(-90) : [],
+  };
+};
+
+const sanitizeTotals = (raw) => {
+  const d = defaults().totals;
+  const v = isObj(raw) ? raw : {};
+  return {
+    solved: num(v.solved, d.solved),
+    hints: num(v.hints, d.hints),
+    cells: num(v.cells, d.cells),
+    ms: num(v.ms, d.ms),
+  };
+};
+
+// resume 是"一整局"，任何一项不可信就整条丢掉（丢一条 vs. 冻一局，取前者）。
+const CELLS_MAX = 40 * 40;
+function sanitizeResume(raw) {
+  if (!isObj(raw)) return null;
+  const cells = num(raw.cells, 0);
+  const ink = Array.isArray(raw.ink) ? raw.ink : null;
+  if (!ink || !cells || cells > CELLS_MAX) return null;
+  // ink 是 (值, 游程) 成对：值只能是 0/1/2，游程 1..255，长度必须是偶数。
+  if (ink.length % 2 || !ink.length) return null;
+  for (let i = 0; i < ink.length; i += 2) {
+    const v = ink[i];
+    const n = ink[i + 1];
+    if (v !== 0 && v !== 1 && v !== 2) return null;
+    if (!Number.isInteger(n) || n < 1 || n > 255) return null;
+  }
+  if (!str(raw.seed, '') || !str(raw.tier, '')) return null;
+  return {
+    seed: raw.seed,
+    tier: raw.tier,
+    style: str(raw.style, ''),
+    name: str(raw.name, '未命名'),
+    elapsedMs: num(raw.elapsedMs, 0),
+    cells,
+    ink,
+    moves: num(raw.moves, 0),
+    hints: num(raw.hints, 0),
+    at: num(raw.at, 0),
+  };
+}
+
 function load() {
+  let parsed = null;
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return defaults();
-    const parsed = JSON.parse(raw);
-    const base = defaults();
-    return {
-      ...base,
-      ...parsed,
-      settings: { ...base.settings, ...(parsed.settings || {}) },
-      daily: { ...base.daily, ...(parsed.daily || {}) },
-      totals: { ...base.totals, ...(parsed.totals || {}) },
-    };
+    parsed = raw ? JSON.parse(raw) : null;
   } catch {
-    return defaults();
+    parsed = null; // 垃圾 JSON：整份重来，但下面的净化仍会把能认的段落认回来
   }
+  if (!isObj(parsed)) parsed = {};
+  return {
+    settings: sanitizeSettings(parsed.settings),
+    best: sanitizeBest(parsed.best),
+    daily: sanitizeDaily(parsed.daily),
+    totals: sanitizeTotals(parsed.totals),
+    resume: sanitizeResume(parsed.resume),
+    // 顶层没认出来的键一概不带进内存，避免 {...parsed} 把 '0'/'1' 当键塞进来。
+  };
 }
 
 export const Store = {
@@ -138,7 +227,8 @@ export const Store = {
   },
 
   resume() {
-    const r = this.data.resume;
+    // 再净化一次：data.resume 可能来自磁盘，也可能被上一局写坏；坏了就只丢这一局。
+    const r = sanitizeResume(this.data.resume);
     if (!r) return null;
     return { ...r, board: rleDecode(r.ink, r.cells) };
   },
