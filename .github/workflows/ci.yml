@@ -28,6 +28,13 @@ jobs:
       - name: Engine tests
         run: node tools/engine-test.mjs
 
+      # 难度台 + 文档钉：分数必须落在引擎自己 advertise 的 band 里，README 那张「实测难度分」
+      # 表必须由这台架当场生成（种子写死、引擎纯函数，所以钉等值而不是钉范围）。
+      # 这台架以前只打印结论、退出码恒 0，所以它那句「fell outside their advertised band」
+      # 在 CI 里从来不可能红；表也从来没人对过。
+      - name: Difficulty balance + README tier table pin
+        run: node tools/balance.mjs
+
       - name: Entry files exist
         run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html
       # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西

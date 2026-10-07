@@ -8,7 +8,9 @@
 - **核心承诺**：每一张图都保证 **① 唯一解**，且 **② 可以从空盘用纯逻辑一路推到底**（永不需猜）。
   这两条不是文案，是生成器的准入门槛——不达标就换候选图，全批失败才报错。
 - 难度不是标签：`小学徒 → 大师` 五档的分数线由求解器**实测**得出（`npm run balance` 打印直方图），
-  分档表照那张表写。
+  分档表照那张表写，而这句话现在是闸而不是意图：分数越 band、某档空生成、或者表和实测对不上，
+  那条命令就退出非 0。它是每档 40 个种子的抽样，不是全种子空间的证明——逐档的 in-band 另由
+  `npm test` 的 `${tier.id} every puzzle in its difficulty band`（12 个 `unit-*` 种子）守着。
 - 提示不是答案：提示跑的是同一个行列表述法求解器，所以它**必须解释用了哪条规则**（唯一排布 / 交叉排除）。
 - 规模：10 个 ES Module / 2,387 行 JS + 8 个验证脚本 / 1611 行 + 377 行 CSS/HTML，**运行时依赖 0 个**。
 - **在线试玩**：<https://z-biz-game.github.io/z-biz-game-nonogram-cos/>（`main` 分支推送即自动部署）
@@ -25,11 +27,15 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码）
 ```bash
 npm run check        # 逐文件 node --check 语法门禁
 npm test             # 引擎断言：枚举计数 / 强制格算术 / 线索往返 / 五档生成保证 / 确定性
-npm run balance      # 难度实测台：每档 40 局的分数分位、pass 数、卡首看比例、候选搜索代价
-npm run verify       # 无头 Chrome 跑 7 个浏览器场景（需本机 Chrome，见下）
+npm run balance      # 难度实测台（也是门禁）：每档 40 局的分数分位、pass 数、卡首看比例、候选搜索代价；
+                     # 分数越出引擎自己 advertise 的 band、某档一个盘都没生成、或下面那张五档表跟实测
+                     # 对不上，都退出非 0。种子写死、引擎纯函数，所以钉的是等值而不是范围。
+npm run verify       # 无头 Chrome 跑 7 个浏览器场景（需本机 Chrome，见下），末尾同样跑 balance
 ```
 
-`npm run verify` 会自己起服务、自己开 Chrome、自己收尾，退出码即结论（共 108 项断言）：
+`npm run verify` 会自己起服务、自己开 Chrome、自己收尾，退出码即结论（7 个浏览器场景共 108 项
+断言，之后再接 balance 与 deploy-set 两段；下面是本机 2026-10-07 一跑的读数，balance 段的
+五行表格略去、只留它的结论行）：
 
 ```
 === engine ===   9 checks, 0 failed
@@ -39,6 +45,8 @@ npm run verify       # 无头 Chrome 跑 7 个浏览器场景（需本机 Chrome
 === save ===    14 checks, 0 failed
 === resume ===  10 checks, 0 failed
 === layout ===  11 checks, 0 failed
+=== balance === all sampled puzzles inside their advertised band，README 表与实测一致
+=== deploy-set === 部署集：27 条引用（含 3 张位图尺寸核对），失败 0 项 · selftest rows: 46 fail: 0
 === ALL GREEN ===
 ```
 
@@ -62,7 +70,8 @@ BASE_URL=https://z-biz-game.github.io/z-biz-game-nonogram-cos/ npm run verify
 | `Z` / `Y` / `H` / `Esc` | 撤销 / 重做 / 提示 / 回首页 |
 | 线索闭合 | 该线剩余格自动打叉（可在设置里关掉，关掉后**真的**由你自己打） |
 
-五档难度，全部由求解器实测分定档（下表是 `npm run balance` 每档 40 局的实测分数区间）：
+五档难度，全部由求解器实测分定档（下表是 `npm run balance` 每档 40 局的实测分数区间，
+2026-10-07 的读数；这张表现在由那条命令自己核对——每档实测 min/max 与表里的区间差一位小数都会红）：
 
 | 档 | 盘面 | 实测难度分 | 特征 |
 |---|---|---|---|
@@ -71,6 +80,15 @@ BASE_URL=https://z-biz-game.github.io/z-biz-game-nonogram-cos/ npm run verify
 | 熟练 | 10×10 | 16.1 – 23.4 | 交叉排除与留白计数 |
 | 专家 | 12×12 | 22.0 – 30.3 | 整图靠链式推理串起来 |
 | 大师 | 15×15 | 30.2 – 36.8 | 每一步都要同时看住两三条线 |
+
+这张表怎么被核对、以及核对本身会不会空转，2026-10-07 在仓库副本里各下一刀验过（每一刀都要求
+`node tools/balance.mjs` 点名红并返回非 0，对照组不刀任何东西必须 rc 0）：把表里 6.8 改成 6.9 ⇒
+`FAIL … 学徒 README 写 6.9–8.6，实测 6.8–8.6`；把 `generate.js` 里那句「在 band 内才加分」的
+择优条件砍掉 ⇒ `FAIL 64 puzzle(s) fell outside their advertised band`；把大师档的 band 收到
+`[30, 30.01)` ⇒ 同样落在 band 外（生成器凑不出该档的盘时并不会返回 null，所以「空生成」那条
+臂只是兜底）；只删掉表里某一档的行、把某一档改名成 TIERS 里没有的名字、以及把整张表的间隔号
+换成抓不到的写法（行数抓到 0）⇒ 分别报「没有行」「已经不是 TIERS 的一档」「判据自己空了」。
+最后一条是必须的：一句只说「抓不到就是文档过关」的判据，最容易的死法就是抓不到时安静地绿。
 
 **每日图**：按日期播种，五档轮转，同一天所有人拿到同一张图；连续天数计入 streak。
 **成绩**：每档记最佳时间，判优顺序是 `提示少 → 步数少 → 用时短`——不乱点也能刷出"最快"的排行没有意义。
@@ -117,6 +135,8 @@ BASE_URL=https://z-biz-game.github.io/z-biz-game-nonogram-cos/ npm run verify
 |---|---|
 | 每局唯一解 | `npm test` 五档生成保证；`verify gen` 用独立 DP 复核小盘面 |
 | 每局可纯逻辑推出 | `verify engine`（浏览器内从空盘解完整图）、`npm test` |
+| 五档分数落在自己宣告的 band 里 | `npm test`（每档生成批全部 in-band）+ `npm run balance`（每档 40 局逐盘复核 band） |
+| 上面那张五档表没在说谎 | `npm run balance` 把 README 表内联解析出来与实测 min/max 对；表抓不到行、某档没有行、多出一个不存在的档、数字漂 0.1 都退出非 0 |
 | 提示永不给错格 | `verify hint`：9 局逐格比对提示与真解 |
 | 提示只给可推导的格 | `verify hint`：只吃提示也能清空整盘（9/9） |
 | 提示解释规则 | `verify hint`：每条提示文案必须含"线索/核对" |
