@@ -8,8 +8,14 @@ let enabled = true;
 // 只统计"真的建出来的节点"：静音态下这个数字必须一动不动，否则就是假静音。
 let oscillators = 0;
 
+// 静音偏好：读回存档。放在模块顶层，init（首屏、开局、重开）都拿到同一个答案，
+// 重开一局不会把玩家的静音选择洗掉。
+try {
+  if (localStorage.getItem('cos.mute') === '1') enabled = false;
+} catch { /* 读不到就沿用默认开声 */ }
+
 function ensure() {
-  // 静音态连 AudioContext 都不新建：没有节点可建，也就没有"偷偷还在响"的余地。
+  // 静音态连 ctx 都不许建、不许拉起来：静音期间这个 AudioContext 根本没有在跑。
   if (!enabled) return null;
   if (ctx) return ctx;
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -39,8 +45,23 @@ function applyMuteState() {
 
 export const audio = {
   setEnabled(v) {
-    enabled = !!v;
-    applyMuteState();
+    const on = !!v;
+    if (on === enabled) return;
+    enabled = on;
+    // 真静音：停掉 AudioContext 本身（时钟停、图不跑）。
+    // 旧写法是 master.gain.value = 0 —— 那是简报点名的假静音：节点照建、时钟照跑，
+    // 取消静音后还会有一段没播完的尾巴冒出来。这里不再碰 master.gain。
+    if (ctx) {
+      if (on) {
+        if (ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
+      } else if (ctx.state === 'running' && ctx.suspend) {
+        ctx.suspend().catch(() => {});
+      }
+    }
+    // 偏好落盘：刷新页面后 init 要能读回静音态，不能自己弹回来。
+    try {
+      localStorage.setItem('cos.mute', on ? '1' : '0');
+    } catch { /* 隐私模式下写不进去也不该炸游戏 */ }
   },
   isEnabled: () => enabled,
   isMuted: () => !enabled,

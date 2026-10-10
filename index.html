@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"><meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#0F0F0F">
-<meta name="description" content="数织 NONOGRAM —— 每一张图都保证可以用纯逻辑推出，永不靠猜。程序生成 + 求解器实测难度分级。">
+<meta name="description" content="数织 NONOGRAM —— 每一张图都保证可以用纯逻辑推出，永不靠猜。程序生成 + 求解器实测难度分级。"><meta property="og:title" content="数织 · Nonogram"><meta property="og:description" content="数织 NONOGRAM —— 每一张图都保证可以用纯逻辑推出，永不靠猜。程序生成 + 求解器实测难度分级。"><meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-nonogram-cos/icons/icon-512.png"><meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-nonogram-cos/icons/icon-512.png">
 <title>数织 · Nonogram</title>
 <!-- 图标一律指向盘上的真 PNG（由 assets/gen/make_art.py 生成），不再用 data-URI 手写 SVG：
      SVG 冒充不了 ≥180px 的位图，装到桌面与主屏时它是一张都拿不出手的图。 -->
@@ -25,6 +25,11 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-nonogram-cos/icons/og-image.png">
 <link rel="stylesheet" href="./css/game.css">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 <div id="app">
@@ -85,6 +90,8 @@
   <section class="screen" id="screen-game" data-screen="game" hidden>
     <header class="hud">
       <button class="icon-btn" id="btn-back" aria-label="返回">‹</button>
+      <button id="btn-fullscreen" class="icon-btn" type="button" aria-pressed="false" aria-label="全屏" title="全屏（F）">⛶</button>
+      <button id="btn-sound" class="icon-btn" type="button" aria-pressed="true" aria-label="音效开关" title="静音 / 恢复音效 · M">♪</button>
       <div class="hud-title">
         <strong id="hud-name">—</strong>
         <span id="hud-tier" class="muted">—</span>
@@ -174,5 +181,6 @@
 
 <script src="./js/sw-register.js"></script>
 <script type="module" src="./js/main.js"></script>
+  <script src="js/sw-register.js"></script>
 </body>
 </html>
